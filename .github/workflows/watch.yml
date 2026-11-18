@@ -1,0 +1,53 @@
+name: CGV 예매 오픈 감시
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "실행 모드"
+        type: choice
+        default: watch
+        options: [watch, test, diagnose]
+
+# 감시 작업은 항상 1개만. 다음 작업은 대기했다가 이어받음
+concurrency:
+  group: cgv-watch-${{ github.event.inputs.mode || 'watch' }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      NTFY_TOPICS: ${{ secrets.NTFY_TOPICS }}
+      CGV_MOV_NO: "30001367"
+      CGV_SITES: "0074:왕십리,0013:용산아이파크몰"
+      FIND_SITES: "영등포"
+      LOOP_INTERVAL: "90"
+      LOOP_SECONDS: "20400"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: 이전 상태 복원
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: state-none
+          restore-keys: state-
+
+      - name: 실행
+        run: python check.py ${{ github.event.inputs.mode || 'watch' }}
+
+      - name: 상태 저장
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: state-${{ github.run_id }}
